@@ -15,15 +15,18 @@ void displayKeyAndValue(NSUInteger level, NSString *key, id value, NSMutableStri
 	if ([value isKindOfClass:[NSDictionary class]]) {
 		if (key) {
 			[output appendFormat:@"%*s%@ = {\n", indent, "", key];
-		} else {
+		} else if (level != 0) {
 			[output appendFormat:@"%*s{\n", indent, ""];
 		}
 		NSDictionary *dictionary = (NSDictionary *)value;
 		NSArray *keys = [[dictionary allKeys] sortedArrayUsingSelector:@selector(compare:)];
-		for (NSString *key in keys) {
-			displayKeyAndValue(level + 1, key, [dictionary valueForKey:key], output);
+		for (NSString *subKey in keys) {
+            NSUInteger subLevel = (key == nil && level == 0) ? 0 : level + 1;
+			displayKeyAndValue(subLevel, subKey, [dictionary valueForKey:subKey], output);
 		}
-		[output appendFormat:@"%*s}\n", indent, ""];
+        if (level != 0) {
+            [output appendFormat:@"%*s}\n", indent, ""];
+        }
 	} else if ([value isKindOfClass:[NSArray class]]) {
 		[output appendFormat:@"%*s%@ = (\n", indent, "", key];
 		NSArray *array = (NSArray *)value;
@@ -51,20 +54,34 @@ NSString *expirationStringForDateInCalendar(NSDate *date, NSCalendar *calendar) 
 	NSString *result = nil;
 
 	if (date) {
-		NSDateComponents *dateComponents = [calendar components:NSDayCalendarUnit fromDate:[NSDate date] toDate:date options:0];
-		if (dateComponents.day == 0) {
-            if ([date compare: [NSDate date]] == NSOrderedAscending) {
+        NSDateComponentsFormatter *formatter = [[NSDateComponentsFormatter alloc] init];
+        formatter.unitsStyle = NSDateComponentsFormatterUnitsStyleFull;
+        formatter.maximumUnitCount = 1;
+
+		NSDateComponents *dateComponents = [calendar components:(NSDayCalendarUnit|NSCalendarUnitHour|NSCalendarUnitMinute)
+                                                       fromDate:[NSDate date]
+                                                         toDate:date
+                                                        options:0];
+        if ([date compare:[NSDate date]] == NSOrderedAscending) {
+            if ([calendar isDate:date inSameDayAsDate:[NSDate date]]) {
                 result = @"<span>Expired today</span>";
             } else {
-                result = @"<span>Expires today</span>";
+                NSDateComponents *reverseDateComponents = [calendar components:(NSDayCalendarUnit|NSCalendarUnitHour|NSCalendarUnitMinute)
+                                                                      fromDate:date
+                                                                        toDate:[NSDate date]
+                                                                       options:0];
+                result = [NSString stringWithFormat:@"<span>Expired %@ ago</span>", [formatter stringFromDateComponents:reverseDateComponents]];
             }
-		} else if (dateComponents.day < 0) {
-			result = [NSString stringWithFormat:@"<span>Expired %zd day%s ago</span>", -dateComponents.day, (dateComponents.day == -1 ? "" : "s")];
-		} else if (dateComponents.day < 30) {
-			result = [NSString stringWithFormat:@"<span>Expires in %zd day%s</span>", dateComponents.day, (dateComponents.day == 1 ? "" : "s")];
-		} else {
-			result = [NSString stringWithFormat:@"Expires in %zd days", dateComponents.day];
-		}
+        } else {
+            if (dateComponents.day == 0) {
+                result = @"<span>Expires today</span>";
+            } else if (dateComponents.day < 30) {
+                result = [NSString stringWithFormat:@"<span>Expires in %@</span>", [formatter stringFromDateComponents:dateComponents]];
+            } else {
+                result = [NSString stringWithFormat:@"Expires in %@", [formatter stringFromDateComponents:dateComponents]];
+            }
+        }
+
 	}
 
 	return result;
@@ -207,6 +224,21 @@ NSString *formattedDictionaryWithReplacements(NSDictionary *dictionary, NSDictio
     }
 
     return string;
+}
+
+NSString *escapedXML(NSString *stringToEscape) {
+    stringToEscape = [stringToEscape stringByReplacingOccurrencesOfString:@"&" withString:@"&amp;"];
+    NSDictionary *htmlEntityReplacement = @{
+                                            @"\"": @"&quot;",
+                                            @"'": @"&apos;",
+                                            @"<": @"&lt;",
+                                            @">": @"&gt;",
+                                            };
+    for (NSString *key in [htmlEntityReplacement allKeys]) {
+        NSString *replacement = [htmlEntityReplacement objectForKey:key];
+        stringToEscape = [stringToEscape stringByReplacingOccurrencesOfString:key withString:replacement];
+    }
+    return stringToEscape;
 }
 
 NSData *codesignEntitlementsDataFromApp(NSData *infoPlistData, NSString *basePath) {
@@ -432,11 +464,18 @@ OSStatus GeneratePreviewForURL(void *thisInterface, QLPreviewRequestRef preview,
                 synthesizedValue = [dateFormatter stringFromDate:date];
                 [synthesizedInfo setObject:synthesizedValue forKey:@"CreationDateFormatted"];
 
-                NSDateComponents *dateComponents = [calendar components:NSDayCalendarUnit fromDate:date toDate:[NSDate date] options:0];
-                if (dateComponents.day == 0) {
+                NSDateComponents *dateComponents = [calendar components:(NSDayCalendarUnit|NSCalendarUnitHour|NSCalendarUnitMinute)
+                                                               fromDate:date
+                                                                 toDate:[NSDate date]
+                                                                options:0];
+                if ([calendar isDate:date inSameDayAsDate:[NSDate date]]) {
                     synthesizedValue = @"Created today";
                 } else {
-                    synthesizedValue = [NSString stringWithFormat:@"Created %zd day%s ago", dateComponents.day, (dateComponents.day == 1 ? "" : "s")];
+                    NSDateComponentsFormatter *formatter = [[NSDateComponentsFormatter alloc] init];
+                    formatter.unitsStyle = NSDateComponentsFormatterUnitsStyleFull;
+                    formatter.maximumUnitCount = 1;
+
+                    synthesizedValue = [NSString stringWithFormat:@"Created %@ ago", [formatter stringFromDateComponents:dateComponents]];
                 }
                 [synthesizedInfo setObject:synthesizedValue forKey:@"CreationSummary"];
             }
@@ -508,17 +547,7 @@ OSStatus GeneratePreviewForURL(void *thisInterface, QLPreviewRequestRef preview,
 
             {
                 NSString *profileString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-                profileString = [profileString stringByReplacingOccurrencesOfString:@"&" withString:@"&amp;"];
-                NSDictionary *htmlEntityReplacement = @{
-                                                        @"\"": @"&quot;",
-                                                        @"'": @"&apos;",
-                                                        @"<": @"&lt;",
-                                                        @">": @"&gt;",
-                                                        };
-                for (NSString *key in [htmlEntityReplacement allKeys]) {
-                    NSString *replacement = [htmlEntityReplacement objectForKey:key];
-                    profileString = [profileString stringByReplacingOccurrencesOfString:key withString:replacement];
-                }
+                profileString = escapedXML(profileString);
                 synthesizedValue = [NSString stringWithFormat:@"<pre>%@</pre>", profileString];
                 [synthesizedInfo setObject:synthesizedValue forKey:@"RawData"];
             }
@@ -584,7 +613,7 @@ OSStatus GeneratePreviewForURL(void *thisInterface, QLPreviewRequestRef preview,
 
         // MARK: File Info
         
-        [synthesizedInfo setObject:[URL lastPathComponent] forKey:@"FileName"];
+        [synthesizedInfo setObject:escapedXML([URL lastPathComponent]) forKey:@"FileName"];
 
         if ([[URL pathExtension] isEqualToString:@"app"] || [[URL pathExtension] isEqualToString:@"appex"]) {
             // get the "file" information using the application package folder

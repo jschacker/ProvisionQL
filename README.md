@@ -1,6 +1,6 @@
 # ProvisionQL - Quick Look for ipa & provision
 
-[![CI Status](https://github.com/ealeksandrov/ProvisionQL/workflows/CI/badge.svg?branch=master)](https://github.com/ealeksandrov/ProvisionQL/actions)
+[![Build Status](https://github.com/ealeksandrov/ProvisionQL/workflows/build/badge.svg?branch=master)](https://github.com/ealeksandrov/ProvisionQL/actions)
 [![Latest Release](https://img.shields.io/github/release/ealeksandrov/ProvisionQL.svg)](https://github.com/ealeksandrov/ProvisionQL/releases/latest)
 [![License](https://img.shields.io/github/license/ealeksandrov/ProvisionQL.svg)](LICENSE.md)
 ![Platform](https://img.shields.io/badge/platform-macos-lightgrey.svg)
@@ -43,10 +43,6 @@ If you have [homebrew](http://brew.sh/) installed - just run one line and you ar
 ```sh
 brew install --cask provisionql
 ```
-
-### Xcode project
-
-Just clone the repository, open `ProvisionQL.xcodeproj` and build active target. Shell script will place generator in `~/Library/QuickLook` and call `qlmanage -r` automatically.
 
 ### Manual
 
